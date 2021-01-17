@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,maximum-scale=2">
+	<title>ELEC 372 AS1 Part 1</title>
+</head>
+<body>
+	<div id="width"></div>
+	<div id="fanout"></div>
+	<script src="dist/plotly.min.js" charset="utf-8"></script>
+	<script type="text/javascript">
+		// Golbal Constants with SI
+		VT = .9, lambda = 1.5e-6;
+		NI = 1.5e16, NDn = 1e15, NDp = 1e15, NSn = 1.39e9, NSp = 9.1e9;
+		CJn = 6.9e-5, CJp = 3.1e-4;
+		CJSWn = 3.43e-10, CJSWp = 3.67e-10;
+		ADn = 18e-12, ADp = 19e-12;
+		PDn = 18e-6, PDp = 18e-6;
+		LDn = .22e-6, LDp = .35e-6;
+		EO = 8.85e-12, EOX = 3.9;
+		TOXn = 40e-9, TOXp = 42e-9;
+		KPn = 52e-6, KPp = 19e-6;
+
+		// Global Assumption
+		VDD = 5, VH = .9*VDD, VL = .1*VDD;
+		Ln = 4*lambda, Lp = 4*lambda;
+
+		// Virables
+		var Wn, fanout;
+
+		// Input Dataset
+		// Create Wn Array from 0λ to 50λ, which is [0, λ, 2λ, ... , 50λ]
+		var WnArr = Array.from({length:50}, (v, k) => k).map(Wn => Wn*lambda);
+		// Create Fanout Array from 0 to 50, which is [0, 1, 2, ... , 50]
+		var fanoutArr = Array.from({length:50}, (v, k) => k);
+
+		// Expression and Function definations
+		/* Define expression for Co */
+		var Co = TOX => EO * EOX / TOX;
+		/* Define expression for CGDO and CGSO */
+		var CGDO = (LD, TOX) => EO * EOX * LD / TOX;
+		var CGSO = (LD, TOX) => EO * EOX * LD / TOX;
+		/* Define expression for Vbi */
+		var Vbi = (ND, NS) => .025 * Math.log(ND*NS/Math.pow(NI, 2));
+		/* Define expression for Keq */
+		var Keq = (ND, NS) => (Math.sqrt(Vbi(ND, NS)) / ((VH - VL)*.5)) * (Math.sqrt(Math.abs(Vbi(ND, NS) + VH)) - Math.sqrt(Math.abs(Vbi(ND, NS) + VL)));
+		/* Define expression for all capacitances */
+		var Cgdo = (W, CGDO) => 2 * CGDO * W;
+		var Cgso = (W, CGSO) => CGSO * W;
+		var Cdb = (Keq, AD, PD, CJ, CJSW) => (Keq * (AD * CJ + PD * CJSW)) || 0;
+		var Cg = (Co, W, L) => Co * W * L;
+		var Cw = () => 1e-15;
+		/* Define expression for Cl */
+		var Cl = (Wn, Wp) => /* Cgdon */Cgdo(Wn, CGDO(LDn, TOXn)) 
+						+ /* Cgdop */Cgdo(Wp, CGDO(LDp, TOXp)) 
+						+ /* Cgson */Cgso(Wn, CGSO(LDn, TOXn)) 
+						+ /* Cgsop */Cgso(Wp, CGSO(LDp, TOXp)) 
+						+ /* Cdb1 */Cdb(Keq(NDn, NSn), ADn, PDn, CJn, CJSWn) 
+						+ /* Cdb2 */Cdb(Keq(NDp, NSp), ADp, PDp, CJp, CJSWp) 
+						+ /* Cg3 */Cg(Co(TOXn), Wn, Ln)
+						+ /* Cg4 */Cg(Co(TOXp), Wp, Lp)
+						+ Cw();
+		/* Define expression for Cl with fanout */
+		var C = (Wn, Wp, fanout) => fanout * Cl(Wn, Wp);
+		/* Define expression for β */
+		var beta = (KP, W, L) => KP * W / L;
+		/* Define expression for PMOS width as a function of NMOS Width */
+		var wp = Wn => KPn * Wn * Lp / (KPp * Ln);
+		/* Define expression for fall time */
+		var fallTime = (Wn, fanout) => (C(Wn, wp(Wn), fanout) / (beta(KPn, Wn, Ln) * (VDD - VT))) * (2*(VT - .1*VDD) / (VDD - VT) + Math.log((2*(VDD - VT) - .1*VDD) / .1*VDD));
+
+
+		// Plot Fall Time figure by NMOS Width
+		Plotly.newPlot('width', [
+			{
+				x: WnArr,
+				y: WnArr.map((Wn) => fallTime(Wn, 1))
+			}
+		], {
+            title: 'Fall Time by NMOS Width',
+            yaxis: {title: 'Fall Time (s)', showline: true, mirror: 'allticks', ticks: 'inside'},
+            xaxis: {title: 'NMOS Width (m)', showline: true, mirror: 'allticks', ticks: 'inside'}
+        });
+
+		// Plot Fall Time figure by fanout
+		Plotly.newPlot('fanout', [
+			{	name: 'Wn = 1λ',
+				x: fanoutArr,
+				y: fanoutArr.map((fanout) => fallTime(lambda, fanout))
+			}
+		], {
+            title: 'Fall Time by Fanout',
+            yaxis: {title: 'Fall Time (s)', showline: true, mirror: 'allticks', ticks: 'inside'},
+            xaxis: {title: 'Fanout', showline: true, mirror: 'allticks', ticks: 'inside'}
+        });
+
+
+		// Capacitance parameters at Wn = 4λ
+		;((Wn, Wp) => {console.log(/* Cgdon */Cgdo(Wn, CGDO(LDn, TOXn)) 
+			, /* Cgdop */Cgdo(Wp, CGDO(LDp, TOXp)) 
+			, /* Cgson */Cgso(Wn, CGSO(LDn, TOXn)) 
+			, /* Cgsop */Cgso(Wp, CGSO(LDp, TOXp)) 
+			, /* Cdb1 */Cdb(Keq(NDn, NSn), ADn, PDn, CJn, CJSWn) 
+			, /* Cdb2 */Cdb(Keq(NDp, NSp), ADp, PDp, CJp, CJSWp) 
+			, /* Cg3 */Cg(Co(TOXn), Wn, Ln)
+			, /* Cg4 */Cg(Co(TOXp), Wp, Lp)
+			, Cw());
+		})(4*lambda, wp(4*lambda))
+
+	</script>
+</body>
+</html>
